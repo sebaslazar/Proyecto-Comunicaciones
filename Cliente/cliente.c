@@ -137,7 +137,7 @@ DWORD WINAPI recibirMensajes(LPVOID lpParam)
         buffer[len] = '\0'; // Se cambió el '�' por '\0
 
         // Guarda mensaje recibido en el historial antes de mostrar
-        add_to_history("Sistema", buffer);
+        agregar_a_historial("Sistema", buffer);
 
         printf("%s", buffer);
     }
@@ -262,7 +262,7 @@ int main()
 
     // Exporta el automáticamente el historial al salir
     printf("Exportando historial automaticamente...\n");
-    export_history_to_file();
+    exportar_historial_hacia_archivo();
 
     // Limpiar recursos
     closesocket(sock);
