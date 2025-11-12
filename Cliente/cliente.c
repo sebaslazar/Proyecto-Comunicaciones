@@ -26,7 +26,7 @@ void obtener_timestamp(char *buffer, int buffer_size)
 {
     time_t now = time(NULL);
     struct tm *tm_info = localtime(&now);
-    strftime(buffer, buffer_size, "%Y-%m-%d %H:%M:%S", tm_info);
+    strftime(buffer, buffer_size, "%d-%m-%Y- %H:%M:%S", tm_info);
 }
 
 // Función para guardar mensaje en el historial
@@ -58,7 +58,7 @@ void exportar_historial_hacia_archivo()
 {
     EnterCriticalSection(&history_cs);
 
-    FILE *file = fopen(HISTORY_FILE, "w");
+    FILE *file = fopen(HISTORY_FILE, "wb");
     if (file == NULL)
     {
         printf("Error: No se pudo crear el archivo de historial.\n");
@@ -66,7 +66,12 @@ void exportar_historial_hacia_archivo()
         return;
     }
 
-    fprintf(file, "=== HISTORIAL DE CHAT ===\n");
+    // Escribe en BOM UTF-8 para que Notepad y otros detecten UTF-8 correctamente
+    unsigned char bom[] = {0xEF, 0xBB, 0xBF};
+    fwrite(bom, sizeof(bom), 1, file);
+
+    // Escribe en el archivo
+    fprintf(file, "========== HISTORIAL DE CHAT ==========\n");
     fprintf(file, "Exportado: ");
 
     char timestamp[20];
@@ -81,7 +86,7 @@ void exportar_historial_hacia_archivo()
                 chat_history[i].message);
     }
 
-    fprintf(file, "\n=== FIN DEL HISTORIAL ===\n");
+    fprintf(file, "\n========== FIN DEL HISTORIAL ==========\n");
     fprintf(file, "Total de mensajes: %d\n", history_count);
 
     fclose(file);
@@ -102,7 +107,7 @@ void mostrar_historial()
         return;
     }
 
-    printf("\n=== HISTORIAL RECIENTE (%d mensajes) ===\n", history_count);
+    printf("\n========== HISTORIAL RECIENTE (%d mensajes) ==========\n", history_count);
     int start = (history_count > 10) ? history_count - 10 : 0;
 
     for (int i = start; i < history_count; i++)
@@ -112,7 +117,7 @@ void mostrar_historial()
                chat_history[i].sender,
                chat_history[i].message);
     }
-    printf("=== FIN DEL HISTORIAL ===\n\n");
+    printf("========== FIN DEL HISTORIAL ==========\n\n");
 
     LeaveCriticalSection(&history_cs);
 }
@@ -147,7 +152,7 @@ DWORD WINAPI recibirMensajes(LPVOID lpParam)
 // Función para mostrar ayuda de comandos
 void mostrar_menu_ayuda()
 {
-    printf("\n=== COMANDOS DISPONIBLES ===\n");
+    printf("\n========== COMANDOS DISPONIBLES ==========\n");
     printf("/list     - Mostrar usuarios conectados\n");
     printf("/history  - Mostrar historial reciente\n");
     printf("/export   - Exportar historial completo a archivo\n");
@@ -225,10 +230,14 @@ int main()
 
         // Elimina salto de línea
         mensaje[strcspn(mensaje, "\n")] = 0;
-        if (strlen(mensaje) == 0) continue;
+
+        // Verifia que se haya escrito algo
+        if (strlen(mensaje) == 0)
+            continue;
 
         // Procesamiento de comandos
-       if (strcmp(mensaje, "/exit") == 0) {
+        if (strcmp(mensaje, "/exit") == 0)
+        {
             agregar_a_historial("Tu", "Saliste del chat");
             break;
         }
@@ -247,14 +256,15 @@ int main()
             limpiar_historial();
             continue;
         }
-        else if (strcmp(mensaje, "/help") == 0) {
+        else if (strcmp(mensaje, "/help") == 0)
+        {
             mostrar_menu_ayuda();
             continue;
         }
 
         // Guarda el mensaje propio en historial antes de enviar
         agregar_a_historial("Tú", mensaje);
-        
+
         // Envia mensaje al servidor
         strcat(mensaje, "\n");
         send(sock, mensaje, strlen(mensaje), 0);
@@ -269,7 +279,8 @@ int main()
     WSACleanup();
     DeleteCriticalSection(&history_cs);
 
+    printf("Conexion cerrada. Presiona Enter para salir...\n");
     getchar();
-    
+
     return 0;
 }
