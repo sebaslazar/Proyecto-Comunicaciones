@@ -215,8 +215,20 @@ int main()
     if (connect(sock, (struct sockaddr *)&server, sizeof(server)) < 0)
     {
         printf("No se pudo conectar con el servidor...\n\n");
-        printf("Cerrando en 5 segundos...\n");
-        Sleep(5000); // Espera 5 segundos para que alcance a leer el mensaje
+
+        // Hace cuenta regresiva para el cierre de la ventana
+        int segundos = 5;
+        printf("Cerrando en %d segundos...", segundos);
+        fflush(stdout);
+
+        for (int i = segundos - 1; i >= 0; i--)
+        {
+            Sleep(1000); // Esperar 1 segundo
+            printf("\rCerrando en %d segundos... ", i);
+            fflush(stdout);
+        }
+
+        printf("\n");
         return 1;
     }
 
