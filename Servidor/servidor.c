@@ -26,6 +26,8 @@ typedef struct
     int peer_idx;        // Índice del cliente emparejado, o -1
 } client_t;
 
+int count_connected_users(client_t clients[]);
+
 // Envia al cliente i la lista de usuarios disponibles y el prompt de elección
 void send_user_list(int i, struct pollfd fds[], client_t clients[])
 {
