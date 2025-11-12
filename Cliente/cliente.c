@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <locale.h> // Proporciona funciones para localización
 #include <time.h>   // Para el timestamp
+#include <string.h> // Para el símbolo personalizado en el prompt
 
 #define SERVER_IP "10.253.56.15"        // Dirección IP del servidor
 #define SERVER_PORT 8080                // Puerto del servidor
@@ -19,7 +20,9 @@ typedef struct
 
 chat_message_t chat_history[MAX_HISTORY];
 int history_count = 0;
+volatile int prompt_ready = 0; // Controla si ya se puede mostrar el prompt
 CRITICAL_SECTION history_cs;
+CRITICAL_SECTION console_cs;
 
 // Función para obtener timestamp actual
 void obtener_timestamp(char *buffer, int buffer_size)
@@ -66,7 +69,7 @@ void exportar_historial_hacia_archivo()
         return;
     }
 
-    // Escribe en BOM UTF-8 para que Notepad y otros detecten UTF-8 correctamente
+    // Escribe en BOM UTF-8 para que los editores de texto detecten UTF-8 correctamente
     unsigned char bom[] = {0xEF, 0xBB, 0xBF};
     fwrite(bom, sizeof(bom), 1, file);
 
@@ -139,12 +142,26 @@ DWORD WINAPI recibirMensajes(LPVOID lpParam)
     int len;
     while ((len = recv(sock, buffer, sizeof(buffer) - 1, 0)) > 0)
     {
-        buffer[len] = '\0'; // Se cambió el '�' por '\0
+        buffer[len] = '\0';
 
-        // Guarda mensaje recibido en el historial antes de mostrar
         agregar_a_historial("Sistema", buffer);
 
-        printf("%s", buffer);
+        // Gestiona el uso de '> ' en el prompt
+        EnterCriticalSection(&console_cs);
+        printf("\r%s", buffer);   // Limpia posible prompt anterior
+        fflush(stdout);
+
+        // Activa el prompt una vez que recibe el primer mensaje del servidor
+        prompt_ready = 1;
+
+        // Muestra el prompt sólo si el mensaje termina con \n (ya se completó una línea)
+        size_t L = strlen(buffer);
+        if (L > 0 && buffer[L - 1] == '\n') {
+            printf("> ");
+            fflush(stdout);
+        }
+
+        LeaveCriticalSection(&console_cs);
     }
     return 0;
 }
@@ -198,10 +215,10 @@ int main()
     struct sockaddr_in server;
     char mensaje[1024];
     DWORD threadId;
-    char username[32] = "";
 
-    // Inicializa sección crítica para el historial.
+    // Inicializa secciones críticas
     InitializeCriticalSection(&history_cs);
+    InitializeCriticalSection(&console_cs);
 
     WSAStartup(MAKEWORD(2, 2), &wsaData);
     sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -232,13 +249,24 @@ int main()
         return 1;
     }
 
+    // Muestra mensajes de ayuda
     printf("Conectado al servidor.\n\n");
     mostrar_menu_ayuda();
     CreateThread(NULL, 0, recibirMensajes, &sock, 0, &threadId);
 
     while (1)
     {
-        fgets(mensaje, sizeof(mensaje), stdin);
+        // Imprime el prompt protegido
+        EnterCriticalSection(&console_cs);
+        if (prompt_ready) { // Sólo muestra el prompt si ya es adecuado
+            printf("> ");
+            fflush(stdout);
+        }
+        LeaveCriticalSection(&console_cs);
+
+        if (fgets(mensaje, sizeof(mensaje), stdin) == NULL) {
+            break;
+        }
 
         // Elimina salto de línea
         mensaje[strcspn(mensaje, "\n")] = 0;
@@ -250,7 +278,7 @@ int main()
         // Procesamiento de comandos
         if (strcmp(mensaje, "/exit") == 0)
         {
-            agregar_a_historial("Tu", "Saliste del chat");
+            agregar_a_historial("Tú", "Saliste del chat");
             break;
         }
         else if (strcmp(mensaje, "/history") == 0)
@@ -290,6 +318,7 @@ int main()
     closesocket(sock);
     WSACleanup();
     DeleteCriticalSection(&history_cs);
+    DeleteCriticalSection(&console_cs);
 
     printf("Conexion cerrada. Presiona Enter para salir...\n");
     getchar();
