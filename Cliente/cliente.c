@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <locale.h> // Proporciona funciones para localización
 
-#define SERVER_IP "127.0.0.1"
+#define SERVER_IP "10.253.56.15"
 #define SERVER_PORT 8080
 
 DWORD WINAPI recibirMensajes(LPVOID lpParam)
