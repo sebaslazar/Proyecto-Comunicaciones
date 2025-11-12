@@ -97,7 +97,7 @@ void mostrar_historial()
 
     if (history_count == 0)
     {
-        printf("El historial esta vacio.\n");
+        printf("El historial está vacío.\n");
         LeaveCriticalSection(&history_cs);
         return;
     }
@@ -122,7 +122,7 @@ void limpiar_historial()
 {
     EnterCriticalSection(&history_cs);
     history_count = 0;
-    printf("Historial limpiado.\n");
+    printf("Historial eliminado.\n");
     LeaveCriticalSection(&history_cs);
 }
 
