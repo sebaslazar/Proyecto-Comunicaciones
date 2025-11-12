@@ -6,6 +6,8 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <poll.h>
+#include <strings.h> // Para usar strcasecmp
+#include <ctype.h>
 
 // Configuración
 #define PORT 8080
@@ -49,26 +51,26 @@ void send_user_list(int i, struct pollfd fds[], client_t clients[])
     send(clients[i].fd, buf, len, 0);
 }
 
-// Función para enviar la lista de usuarios conectados (Mejora nivel básico)
+// Función para enviar la lista de usuarios conectados (Mejora el nivel básico)
 void send_user_list_to_client(int client_idx, struct pollfd fds[], client_t clients[])
 {
     char buf[BUF_SIZE];
-    int len = snprintf(buf, sizeof(buf), "=== Usuarios Conectados ===\n");
+    int len = snprintf(buf, sizeof(buf), "========== Usuarios Conectados ==========\n");
 
     for (int j = 1; j <= MAX_CLIENTS; j++)
     {
         if (j == client_idx)
-            continue; // Saltar el propio cliente
+            continue; // Salta el propio cliente
         if (clients[j].fd >= 0 && clients[j].state >= STATE_CHOOSING)
         {
             char status[20];
             if (clients[j].state == STATE_CHATTING)
             {
-                strcpy(status, "[En chat]");
+                strcpy(status, "[En chat]"); // Si el usuario está chateando con otro
             }
             else
             {
-                strcpy(status, "[Disponible]");
+                strcpy(status, "[Disponible]"); // Si el usuario no está chateando actualmente con nadie
             }
             len += snprintf(buf + len, sizeof(buf) - len,
                             "- %s %s\n", clients[j].name, status);
@@ -76,7 +78,7 @@ void send_user_list_to_client(int client_idx, struct pollfd fds[], client_t clie
     }
 
     len += snprintf(buf + len, sizeof(buf) - len,
-                    "=== Total: %d usuarios ===\n", count_connected_users(clients));
+                    "========== Total: %d usuarios ==========\n", count_connected_users(clients));
 
     send(clients[client_idx].fd, buf, len, 0);
 }
@@ -95,6 +97,31 @@ int count_connected_users(client_t clients[])
     return count;
 }
 
+// Quita espacios en blanco al inicio y al final de la cadena
+void trim_whitespace(char *s)
+{
+    if (!s) return;
+    // Trim al inicio
+    char *start = s;
+    while (*start && isspace((unsigned char)*start)) start++;
+
+    // Si todo eran espacios
+    if (*start == 0)
+    {
+        *s = '\0';
+        return;
+    }
+
+    // Mueve el contenido hacia el inicio
+    if (start != s)
+        memmove(s, start, strlen(start) + 1);
+
+    // Trim al final
+    char *end = s + strlen(s) - 1;
+    while (end > s && isspace((unsigned char)*end)) end--;
+    *(end + 1) = '\0';
+}
+
 int main()
 {
     int listen_fd, nfds;
@@ -103,7 +130,7 @@ int main()
     client_t clients[MAX_CLIENTS + 1];
     char buffer[BUF_SIZE];
 
-    // 1. Crear y configurar socket de escucha
+    // 1. Crea y configura el socket de escucha
     listen_fd = socket(AF_INET, SOCK_STREAM, 0);
 
     if (listen_fd < 0)
@@ -135,7 +162,7 @@ int main()
 
     printf("Servidor uno-a-uno en poll() escuchando puerto %d\n", PORT);
 
-    // 2. Inicializar fds y clients
+    // 2. Inicializa fds y clients
     fds[0].fd = listen_fd;
     fds[0].events = POLLIN;
 
@@ -145,6 +172,7 @@ int main()
         clients[i].fd = -1;
         clients[i].state = -1;
         clients[i].peer_idx = -1;
+        clients[i].name[0] = '\0'; // Cadena vacía
     }
 
     // 3. Bucle principal
@@ -169,7 +197,7 @@ int main()
             }
             else
             {
-                // buscar ranura libre
+                // Busca ranura libre
                 int i;
 
                 for (i = 1; i <= MAX_CLIENTS; i++)
@@ -181,6 +209,7 @@ int main()
                         clients[i].fd = conn_fd;
                         clients[i].state = STATE_NAME;
                         clients[i].peer_idx = -1;
+                        clients[i].name[0] = '\0';
                         const char *msg = "Bienvenido. Ingresa tu nombre: \n";
                         send(conn_fd, msg, strlen(msg), 0);
                         printf("Nuevo cliente fd=%d asignado al slot %d\n", conn_fd, i);
@@ -190,7 +219,7 @@ int main()
 
                 if (i > MAX_CLIENTS)
                 {
-                    const char *msg = "Servidor lleno. Intenta mas tarde.\n";
+                    const char *msg = "Servidor lleno. Intenta más tarde.\n";
                     send(conn_fd, msg, strlen(msg), 0);
                     close(conn_fd);
                 }
@@ -233,6 +262,7 @@ int main()
                 clients[i].fd = -1;
                 clients[i].state = -1;
                 clients[i].peer_idx = -1;
+                clients[i].name[0] = '\0';
                 if (--nfds == 0)
                     break;
 
@@ -245,29 +275,73 @@ int main()
             {
                 buffer[--n] = '\0';
             }
+
             switch (clients[i].state)
             {
             case STATE_NAME:
-                // guardar nombre y pasar a choosing
-                strncpy(clients[i].name, buffer, NAME_LEN - 1);
-                clients[i].name[NAME_LEN - 1] = '\0';
-                clients[i].state = STATE_CHOOSING;
-                printf("Cliente fd=%d se registro como '%s'\n", fd, clients[i].name);
-                send_user_list(i, fds, clients);
+            {
+                // Limpia espacios en blanco
+                trim_whitespace(buffer);
 
-                // Notificar a otros clientes que están esperando elegir (STATE_CHOOSING)
-                for (int k = 1; k <= MAX_CLIENTS; k++)
+                // Validaciones adicionales de nombre de usuario
+                int valid = 1;
+                const char *err_msg = NULL;
+
+                if (buffer[0] == '\0')
                 {
-                    if (k == i)
-                        continue;
-                    if (clients[k].fd >= 0 && clients[k].state == STATE_CHOOSING)
+                    valid = 0;
+                    err_msg = "NOMBRE NO VÁLIDO: no puede estar vacío. Ingresa tu nombre: \n";
+                }
+                else if (buffer[0] == '/')
+                {
+                    valid = 0;
+                    err_msg = "NOMBRE NO VÁLIDO: no puede iniciar con '/'. Ingresa tu nombre: \n"; // Para no usar el mismo carácter que identifica a los comandos del cliente
+                }
+                else
+                {
+                    // Comprueba duplicados (case-insensitive)
+                    for (int j = 1; j <= MAX_CLIENTS; j++)
                     {
-                        send_user_list(k, fds, clients);
+                        if (j == i) continue;
+                        if (clients[j].fd >= 0 && clients[j].name[0] != '\0')
+                        {
+                            if (strcasecmp(clients[j].name, buffer) == 0)
+                            {
+                                valid = 0;
+                                err_msg = "NOMBRE NO VÁLIDO: ya existe otro usuario con ese nombre. Ingresa otro nombre: \n";
+                                break;
+                            }
+                        }
                     }
                 }
 
-                break;
+                if (!valid)
+                {
+                    send(fd, err_msg, strlen(err_msg), 0);
+                    // Mantiene el STATE_NAME para insistir
+                }
+                else
+                {
+                    // Guarda el nombre y pasa a STATE_CHOOSING
+                    strncpy(clients[i].name, buffer, NAME_LEN - 1);
+                    clients[i].name[NAME_LEN - 1] = '\0';
+                    clients[i].state = STATE_CHOOSING;
+                    printf("Cliente fd=%d se registro como '%s'\n", fd, clients[i].name);
+                    send_user_list(i, fds, clients);
 
+                    // Notifica a otros clientes que están esperando para elegir (STATE_CHOOSING)
+                    for (int k = 1; k <= MAX_CLIENTS; k++)
+                    {
+                        if (k == i)
+                            continue;
+                        if (clients[k].fd >= 0 && clients[k].state == STATE_CHOOSING)
+                        {
+                            send_user_list(k, fds, clients);
+                        }
+                    }
+                }
+                break;
+            }
             case STATE_CHOOSING:
             {
                 // Verifica si se ingresó el comando /list
@@ -324,7 +398,7 @@ int main()
 
                 if (strcmp(buffer, "/exit") == 0)
                 {
-                    // romper emparejamiento
+                    // Rompe emparejamiento
                     const char *msg_exit = "Has salido del chat.\n";
                     send(fd, msg_exit, strlen(msg_exit), 0);
 
@@ -344,7 +418,7 @@ int main()
                 }
                 else
                 {
-                    // reenviar mensaje al peer
+                    // Reenvía mensaje al peer
                     if (peer > 0 && clients[peer].fd >= 0)
                     {
                         char forward[BUF_SIZE];
@@ -364,7 +438,7 @@ int main()
         }
     }
 
-    // cerrar socket de escucha
+    // Cierra el socket de escucha
     close(listen_fd);
     return 0;
 }
