@@ -1,0 +1,5 @@
+# Para ignorar por parte del cliente
+.vscode/
+Cliente/cliente.exe
+Cliente/compile_log.txt
+Cliente/run_log.txt
