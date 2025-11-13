@@ -29,7 +29,7 @@ void obtener_timestamp(char *buffer, int buffer_size)
 {
     time_t now = time(NULL);
     struct tm *tm_info = localtime(&now);
-    strftime(buffer, buffer_size, "%d-%m-%Y- %H:%M:%S", tm_info);
+    strftime(buffer, buffer_size, "%Y-%m-%d %H:%M:%S", tm_info);
 }
 
 // Función para guardar mensaje en el historial
@@ -64,7 +64,7 @@ void exportar_historial_hacia_archivo()
     FILE *file = fopen(HISTORY_FILE, "wb");
     if (file == NULL)
     {
-        printf("Error: No se pudo crear el archivo de historial.\n");
+        printf("ERROR: No se pudo crear el archivo de historial.\n");
         LeaveCriticalSection(&history_cs);
         return;
     }
@@ -140,15 +140,41 @@ DWORD WINAPI recibirMensajes(LPVOID lpParam)
     SOCKET sock = *((SOCKET *)lpParam);
     char buffer[1024];
     int len;
+
     while ((len = recv(sock, buffer, sizeof(buffer) - 1, 0)) > 0)
     {
         buffer[len] = '\0';
 
-        agregar_a_historial("Sistema", buffer);
+        // Determina la fuente del mensaje
+        if (strstr(buffer, "Sistema:") != NULL ||
+            strstr(buffer, "Bienvenido") != NULL ||
+            strstr(buffer, "Usuarios conectados") != NULL ||
+            strstr(buffer, "Salas Disponibles") != NULL ||
+            strstr(buffer, "=== ") != NULL)
+        {
+            // Guarda en el historial antes de mostrar
+            agregar_a_historial("Sistema", buffer);
+        }
+        else
+        {
+            // En este caso es un mesaje de chat, así que extraer el remitente
+            char sender[32] = "Usuario";
+            char *colon = strchr(buffer, ':');
+            if (colon != NULL)
+            {
+                int sender_len = colon - buffer;
+                if (sender_len < sizeof(sender) - 1)
+                {
+                    strncpy(sender, buffer, sender_len);
+                    sender[sender_len] = '\0';
+                }
+            }
+            agregar_a_historial(sender, buffer);
+        }
 
         // Gestiona el uso de '> ' en el prompt
         EnterCriticalSection(&console_cs);
-        printf("\r%s", buffer);   // Limpia posible prompt anterior
+        printf("\r%s", buffer); // Limpia posible prompt anterior
         fflush(stdout);
 
         // Activa el prompt una vez que recibe el primer mensaje del servidor
@@ -156,7 +182,8 @@ DWORD WINAPI recibirMensajes(LPVOID lpParam)
 
         // Muestra el prompt sólo si el mensaje termina con \n (ya se completó una línea)
         size_t L = strlen(buffer);
-        if (L > 0 && buffer[L - 1] == '\n') {
+        if (L > 0 && buffer[L - 1] == '\n')
+        {
             printf("> ");
             fflush(stdout);
         }
@@ -166,16 +193,29 @@ DWORD WINAPI recibirMensajes(LPVOID lpParam)
     return 0;
 }
 
-// Función para mostrar ayuda de comandos
+// Función para mostrar comandos de ayuda
 void mostrar_menu_ayuda()
 {
     printf("\n========== COMANDOS DISPONIBLES ==========\n");
-    printf("/list     - Mostrar usuarios conectados\n");
-    printf("/history  - Mostrar historial reciente\n");
-    printf("/export   - Exportar historial completo a archivo\n");
-    printf("/clear    - Limpiar historial local\n");
-    printf("/help     - Mostrar esta ayuda\n");
-    printf("/exit     - Salir del chat\n\n");
+    printf("CHAT PRIVADO:\n");
+    printf("  <nombre>     - Iniciar chat con usuario\n");
+    printf("  /exit        - Salir del chat actual\n");
+    printf("\nSALAS DE CHAT:\n");
+    printf("  /join #sala  - Unirse o crear sala\n");
+    printf("  /leave       - Salir de la sala actual\n");
+    printf("  /rooms       - Listar salas disponibles\n");
+    printf("  /roomusers   - Ver usuarios en tu sala\n");
+    printf("\nGENERALES:\n");
+    printf("  /list        - Mostrar usuarios conectados\n");
+    printf("  /history     - Mostrar historial reciente\n");
+    printf("  /export      - Exportar historial completo\n");
+    printf("  /clear       - Limpiar historial local\n");
+    printf("  /help        - Mostrar esta ayuda\n");
+    printf("\nEJEMPLOS DE USO:\n");
+    printf("  /join #general    - Unirse a sala general\n");
+    printf("  /join #equipo1    - Crear la sala equipo1\n");
+    printf("  Mario             - Chatear con Mario\n");
+    printf("==========================================\n\n");
 }
 
 // Función para mostrar banner inicial
@@ -203,6 +243,22 @@ void mostrar_banner()
     printf("╚══════════════════════════════════════════════════════════════╝\n");
 }
 
+// Función que muestra una cuenta regresiva para la finalización del programa
+void cuenta_regresiva_para_cierre(int segundos)
+{
+    printf("\nCerrando en %d segundos...", segundos);
+    fflush(stdout);
+
+    for (int i = segundos - 1; i >= 0; i--)
+    {
+        Sleep(1000); // Esperar 1 segundo
+        printf("\rCerrando en %d segundos... ", i);
+        fflush(stdout);
+    }
+
+    printf("\n");
+}
+
 int main()
 {
     // Configuración para carácteres Unicode
@@ -223,6 +279,14 @@ int main()
     WSAStartup(MAKEWORD(2, 2), &wsaData);
     sock = socket(AF_INET, SOCK_STREAM, 0);
 
+    // Válida que el socket se ha creado correctamente
+    if (sock == INVALID_SOCKET)
+    {
+        printf("ERROR: No se pudo crear el socket...\n");
+        cuenta_regresiva_para_cierre(5);
+        return 1;
+    }
+
     server.sin_family = AF_INET;
     server.sin_port = htons(SERVER_PORT);
     server.sin_addr.s_addr = inet_addr(SERVER_IP);
@@ -231,54 +295,52 @@ int main()
 
     if (connect(sock, (struct sockaddr *)&server, sizeof(server)) < 0)
     {
-        printf("No se pudo conectar con el servidor...\n\n");
-
-        // Hace cuenta regresiva para el cierre de la ventana
-        int segundos = 5;
-        printf("Cerrando en %d segundos...", segundos);
-        fflush(stdout);
-
-        for (int i = segundos - 1; i >= 0; i--)
-        {
-            Sleep(1000); // Esperar 1 segundo
-            printf("\rCerrando en %d segundos... ", i);
-            fflush(stdout);
-        }
-
-        printf("\n");
+        printf("ERROR: No se pudo conectar al servidor %s:%d\n", SERVER_IP, SERVER_PORT);
+        printf("Asegúrese de que el servidor se esté ejecutando.\n");
+        cuenta_regresiva_para_cierre(5);
         return 1;
     }
 
-    // Muestra mensajes de ayuda
     printf("Conectado al servidor.\n\n");
+
+    // Muestra mensajes de ayuda
     mostrar_menu_ayuda();
+
+    // Crea hilo para recibir mensajes
     CreateThread(NULL, 0, recibirMensajes, &sock, 0, &threadId);
 
     while (1)
     {
         // Imprime el prompt protegido
         EnterCriticalSection(&console_cs);
-        if (prompt_ready) { // Sólo muestra el prompt si ya es adecuado
+        if (prompt_ready)
+        { // Sólo muestra el prompt si ya es adecuado
             printf("> ");
             fflush(stdout);
         }
         LeaveCriticalSection(&console_cs);
 
-        if (fgets(mensaje, sizeof(mensaje), stdin) == NULL) {
+        if (fgets(mensaje, sizeof(mensaje), stdin) == NULL)
+        {
             break;
         }
 
         // Elimina salto de línea
         mensaje[strcspn(mensaje, "\n")] = 0;
 
-        // Verifia que se haya escrito algo
+        // Verifica que se haya escrito algo
         if (strlen(mensaje) == 0)
             continue;
 
-        // Procesamiento de comandos
+        // Procesamiento de comandos locales
         if (strcmp(mensaje, "/exit") == 0)
         {
+            // Guarda mensaje de salida en historial
             agregar_a_historial("Tú", "Saliste del chat");
+
+            // Envia comando de salida al servidor
+            strcat(mensaje, "\n");
+            send(sock, mensaje, strlen(mensaje), 0);
             break;
         }
         else if (strcmp(mensaje, "/history") == 0)
@@ -301,16 +363,36 @@ int main()
             mostrar_menu_ayuda();
             continue;
         }
+        else if (strcmp(mensaje, "/cls") == 0)
+        {
+            system("cls");
+            mostrar_menu_ayuda();
+            continue;
+        }
 
-        // Guarda el mensaje propio en historial antes de enviar
-        agregar_a_historial("Tú", mensaje);
+        // Guarda el mensaje en historial antes de enviar, pero sólo si es no es un comando del sistema
+        if (strncmp(mensaje, "/", 1) != 0)
+        {
+            agregar_a_historial("Tú", mensaje);
+        }
 
         // Envia mensaje al servidor
-        strcat(mensaje, "\n");
-        send(sock, mensaje, strlen(mensaje), 0);
+        char mensaje_con_salto[1024];
+        strcpy(mensaje_con_salto, mensaje);
+        strcat(mensaje_con_salto, "\n");
+
+        // Verifica que el mensaje se haya se haya envíado correctamente
+        if (send(sock, mensaje_con_salto, strlen(mensaje_con_salto), 0) < 0)
+        {
+            printf("ERROR: No se pudo enviar el mensaje. Conexión perdida.\n");
+            break;
+        }
+
+        // Pequeña pausa para evitar saturación
+        Sleep(10);
     }
 
-    // Exporta el automáticamente el historial al salir
+    // Exporta automáticamente el historial al salir
     printf("Exportando historial automaticamente...\n");
     exportar_historial_hacia_archivo();
 
