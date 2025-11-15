@@ -72,7 +72,7 @@ echo.
 
 rem ---------- ejecutar inmediatamente ----------
 echo ----------------------------------------------------------
-echo  EJECUTANDO cliente.exe (salida en tiempo real)
+echo  Ejecutando cliente.exe compilado
 echo ----------------------------------------------------------
 echo.
 cliente.exe
