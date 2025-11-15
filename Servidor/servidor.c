@@ -9,11 +9,8 @@
 #include <strings.h> // Para usar strcasecmp
 #include <ctype.h>   // Para la manipulación de caracteres
 #include <locale.h>  // Proporciona funciones para localización
-<<<<<<< HEAD
 
 // Estructura del socket
-=======
->>>>>>> 4211716b012b44cabb789e16802d4a29bf33c4db
 
 // Configuración
 #define PORT 8080        // Número de puerto
@@ -29,15 +26,6 @@
 #define STATE_CHATTING 2 // Chat activo
 #define STATE_IN_ROOM 3  // En sala de chat
 
-// Estructura para salas de chat
-typedef struct
-{
-    char name[ROOM_NAME_LEN];
-    int client_indices[MAX_CLIENTS];
-    int client_count;
-} room_t;
-
-// Estructura del socket
 typedef struct
 {
     int fd;              // Descriptor de socket
@@ -47,10 +35,9 @@ typedef struct
     int room_idx;        // Índice de la sala, o -1 si no está en sala
 } client_t;
 
-<<<<<<< HEAD
 void broadcast_a_la_sala(int room_idx, int sender_idx,
                          const char *message, int msg_len,
-                         client_t clients[]);
+                        client_t clients[]);
 
 // Estructura para salas de chat
 typedef struct
@@ -62,8 +49,6 @@ typedef struct
 
 
 
-=======
->>>>>>> 4211716b012b44cabb789e16802d4a29bf33c4db
 // Variables globales para salas
 room_t rooms[MAX_ROOMS];
 int room_count = 0;
@@ -198,8 +183,8 @@ void broadcast_a_la_sala(int room_idx, int sender_idx, const char *message, int 
             if (sender_idx >= 0)
             {
                 int len = snprintf(formatted_msg, sizeof(formatted_msg),
-                                   "[%s] %s: %s\n", rooms[room_idx].name,
-                                   clients[sender_idx].name, message);
+                                    "[%s] %s: %s\n", rooms[room_idx].name,
+                                    clients[sender_idx].name, message);
                 send(clients[client_idx].fd, formatted_msg, len, 0);
             }
             else
@@ -319,11 +304,7 @@ void enviar_lista_de_usuarios_al_cliente(int client_idx, struct pollfd fds[], cl
             continue;
         if (clients[j].fd >= 0 && clients[j].state >= STATE_CHOOSING)
         {
-<<<<<<< HEAD
             char status[64];
-=======
-            char status[32];
->>>>>>> 4211716b012b44cabb789e16802d4a29bf33c4db
             if (clients[j].state == STATE_CHATTING)
             {
                 strcpy(status, "[Chat privado]"); // Si el usuario está chateando con otro directamente
@@ -393,11 +374,7 @@ void quitar_espacios_en_blanco(char *s)
 int main()
 {
     // Configuración para carácteres Unicode
-<<<<<<< HEAD
     
-=======
-    SetConsoleOutputCP(CP_UTF8);
->>>>>>> 4211716b012b44cabb789e16802d4a29bf33c4db
     setlocale(LC_ALL, "es_ES.UTF-8");
 
     // Inicio del programa principal
@@ -723,10 +700,10 @@ int main()
                 if (!found)
                 {
                     const char *msg = "========== Usuario no disponible ==========\n"
-                                      "Elige otro o usa:\n\n"
-                                      "/list - Ver usuarios\n"
-                                      "/rooms - Ver salas\n"
-                                      "/join #nombre-de-sala - Unirse a sala\n";
+                                        "Elige otro o usa:\n\n"
+                                        "/list - Ver usuarios\n"
+                                        "/rooms - Ver salas\n"
+                                        "/join #nombre-de-sala - Unirse a sala\n";
                     send(fd, msg, strlen(msg), 0);
                     // enviar_lista_de_usuarios(i, fds, clients); (Descomentar para mostrar la lista simplificada)
                 }
