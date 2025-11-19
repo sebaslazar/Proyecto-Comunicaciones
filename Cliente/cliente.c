@@ -5,7 +5,7 @@
 #include <time.h>   // Para el timestamp
 #include <string.h> // Para el símbolo personalizado en el prompt
 
-#define SERVER_IP "10.253.56.15"        // Dirección IP del servidor
+#define SERVER_IP "172.16.71.2"        // Dirección IP del servidor (Cambiar a gusto)
 #define SERVER_PORT 8080                // Puerto del servidor
 #define HISTORY_FILE "chat_history.txt" // Nombre del archivo exportable
 #define MAX_HISTORY 1000                // Número máximo de registros en el historial
